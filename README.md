@@ -4,7 +4,7 @@
 
 This is a literate programming code generation tool for the [Yin](https://crates.io/crates/zamm_yin) and [Yang](https://crates.io/crates/zamm_yang) crates.
 
-It builds an intermediate code-generation binary from the provided README file and runs the binary in the current directory.
+It builds an intermediate code-generation binary from the provided Markdown file (`yin.md` by default) and runs the binary in the current directory.
 
 ## Install
 
@@ -33,3 +33,13 @@ SUBCOMMANDS:
     release    Prepare repo for a Cargo release
     test       Make sure the project will pass CI tests
 ```
+
+You can look at the `yin.md` for both [Yin](https://github.com/amosjyng/yin/blob/main/yin.md) and [Yang](https://github.com/amosjyng/yang/blob/main/yin.md) for examples on this literate programming style.
+
+To use this tool, simply navigate to the project directory and run
+
+```sh
+zamm build
+```
+
+The code will be generated inside the current directory.
