@@ -11,3 +11,10 @@ keywords = ["codegen", "code-generation"]
 categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
+clap = { version = "^2.33.3", features = ["color", "wrap_help"] }
+colored = "^2"
+indoc = "^1.0"
+itertools = "^0.9.0"
+path_abs = "^0.5.0"
+pulldown-cmark = "^0.8.0"
+toml = "^0.5.7"
