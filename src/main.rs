@@ -100,7 +100,7 @@ fn generate_code(build_cfg: &BuildConfig) -> Result<(), Error> {
     let found_input = find_file(build_cfg.input_file)?;
     let literate_rust_code = parse_input(found_input)?;
 
-    generate_final_code(literate_rust_code.trim(), &build_cfg.codegen_cfg);
+    generate_final_code(&literate_rust_code, &build_cfg.codegen_cfg);
 
     Ok(())
 }

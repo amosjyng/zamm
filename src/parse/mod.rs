@@ -1,7 +1,7 @@
 /// Literate programming support - extracts relevant code from Markdown file.
 pub mod markdown;
 
-pub use markdown::extract_rust;
+pub use markdown::{extract_code, CodeExtraction};
 use path_abs::{PathAbs, PathInfo};
 use std::env;
 use std::fs::read_to_string;
@@ -53,7 +53,7 @@ pub fn find_file(specified_file: Option<&str>) -> Result<PathAbs, Error> {
 }
 
 /// Parse the giveninput file.
-pub fn parse_input(found_input: PathAbs) -> Result<String, Error> {
+pub fn parse_input(found_input: PathAbs) -> Result<CodeExtraction, Error> {
     println!(
         "cargo:rerun-if-changed={}",
         found_input.as_os_str().to_str().unwrap()
@@ -64,7 +64,7 @@ pub fn parse_input(found_input: PathAbs) -> Result<String, Error> {
         .map(|e| e.to_str().unwrap())
         .unwrap_or("");
     match extension {
-        "md" => Ok(extract_rust(&contents)),
+        "md" => Ok(extract_code(&contents)),
         _ => Err(Error::new(
             ErrorKind::NotFound,
             format!(

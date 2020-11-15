@@ -1,5 +1,6 @@
 use super::{CodegenConfig, MainConfig};
 use crate::commands::run_streamed_command;
+use crate::parse::CodeExtraction;
 use colored::*;
 use indoc::formatdoc;
 use itertools::Itertools;
@@ -10,25 +11,15 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::exit;
 
-/// Default version of Yang to use if no local dev version found.
-const YANG_BUILD_VERSION: &str = "0.0.12";
+/// Directory to put build files in.
+const ZAMM_INTERMEDIATE_DIR: &str = ".zamm";
 
 /// Name for the codegen binary. Be sure to change BUILD_TOML as well when changing this.
 const CODEGEN_BINARY: &str = "intermediate-code-generator";
 
 /// File contents for the intermediate cargo.toml that is only meant for generating the actual code
 /// at the end.
-fn toml_code() -> String {
-    let yang_version = match env::var("YANG_DEV_DIR") {
-        Ok(dir) => {
-            println!("Linking intermediate binary to local yang dev.");
-            format!("{{path = \"{}\"}}", dir).replace('\\', "/")
-        }
-        Err(_) => {
-            println!("Linking intermediate binary to yang {}", YANG_BUILD_VERSION);
-            format!("\"{}\"", YANG_BUILD_VERSION)
-        }
-    };
+fn toml_code(dependencies: &str) -> String {
     // note that zamm_yin must be running on the same version as whatever version yang is built on,
     // *not* whatever version the user is building for, because otherwise different graphs will be
     // used and it won't be initialized properly.
@@ -42,15 +33,14 @@ fn toml_code() -> String {
         edition = "2018"
 
         [dependencies]
-        zamm_yin = "0.0.13"
-        zamm_yang = {}
-    "#, yang_version}
+        {dependencies}
+    "#, dependencies = dependencies}
 }
 
 /// Directory where we're outputting things.
 fn build_subdir() -> PathBuf {
     let mut tmp = env::current_dir().unwrap();
-    tmp.push(".yang");
+    tmp.push(ZAMM_INTERMEDIATE_DIR);
     tmp
 }
 
@@ -67,23 +57,6 @@ pub fn code_main(main_cfg: &MainConfig, codegen_cfg: &CodegenConfig) -> String {
     formatdoc! {r#"
         #![allow(dead_code, unused_imports)]
 
-        pub use zamm_yin::tao::Tao;
-        pub use zamm_yin::tao::archetype::ArchetypeTrait;
-        pub use zamm_yin::tao::archetype::ArchetypeFormTrait;
-        pub use zamm_yin::tao::archetype::AttributeArchetype;
-        pub use zamm_yin::tao::form::FormTrait;
-        pub use zamm_yin::node_wrappers::CommonNodeTrait;
-        pub use zamm_yang::codegen::CodegenConfig;
-        pub use zamm_yang::tao::callbacks::handle_all_implementations;
-        pub use zamm_yang::tao::initialize_kb;
-        pub use zamm_yang::tao::Implement;
-        pub use zamm_yang::tao::ImplementConfig;
-        pub use zamm_yang::tao::archetype::CodegenFlags;
-        pub use zamm_yang::tao::form::DefinedMarker;
-        pub use zamm_yang::tao::form::data::DataExtension;
-        pub use zamm_yang::tao::archetype::CreateImplementation;
-        pub use zamm_yang::define;
-        pub use zamm_yang::helper::aa;
         {imports}
 
         fn main() {{
@@ -97,7 +70,7 @@ pub fn code_main(main_cfg: &MainConfig, codegen_cfg: &CodegenConfig) -> String {
 
             initialize_kb();
             // ------------------------ START OF LITERATE RUST -------------------------
-            {code}
+        {code}
             // -------------------------- END OF LITERATE RUST -------------------------
             handle_all_implementations(&codegen_cfg);
         }}
@@ -131,17 +104,17 @@ fn output_main(main_cfg: &MainConfig, codegen_cfg: &CodegenConfig) {
 }
 
 /// Write the cargo.toml
-fn output_cargo_toml() {
+fn output_cargo_toml(dependencies: &str) {
     let mut cargo_toml = build_subdir();
     cargo_toml.push("Cargo.toml"); // Cargo files are somehow uppercased by default
-    output_code_verbatim(&toml_code(), &cargo_toml.to_str().unwrap());
+    output_code_verbatim(dependencies, &cargo_toml.to_str().unwrap());
 }
 
 /// Set up the build directory for compilation of a program that will then go on to generate the
 /// final code files.
-fn output_build_dir(code: &str, codegen_cfg: &CodegenConfig) {
-    output_main(&separate_imports(code), codegen_cfg);
-    output_cargo_toml();
+fn output_build_dir(code: &CodeExtraction, codegen_cfg: &CodegenConfig) {
+    output_main(&separate_imports(&code.rust), codegen_cfg);
+    output_cargo_toml(&toml_code(&code.toml));
     println!("Finished generating codegen files.");
 }
 
@@ -158,7 +131,8 @@ fn separate_imports(code: &str) -> MainConfig {
                     .collect(),
             );
         } else if !line.is_empty() {
-            lines.push(line.to_owned());
+            // indent code for prettier output
+            lines.push(format!("    {}", line));
         }
     }
 
@@ -214,7 +188,7 @@ fn build_codegen_binary() -> String {
 }
 
 /// Generate code using the specified code and imports.
-pub fn generate_final_code(code: &str, codegen_cfg: &CodegenConfig) {
+pub fn generate_final_code(code: &CodeExtraction, codegen_cfg: &CodegenConfig) {
     output_build_dir(code, codegen_cfg);
     let binary_path = build_codegen_binary();
     println!("==================== RUNNING CODEGEN ====================");
@@ -245,7 +219,7 @@ mod tests {
             let y = x + 1;"}),
             MainConfig {
                 imports: vec![],
-                lines: vec!["let x = 1;\nlet y = x + 1;".to_owned()],
+                lines: vec!["    let x = 1;\n    let y = x + 1;".to_owned()],
             }
         );
     }
@@ -274,7 +248,7 @@ mod tests {
             let y = x + 1;"}),
             MainConfig {
                 imports: vec!["std::rc::Rc".to_owned(), "crate::my::Struct".to_owned()],
-                lines: vec!["let x = 1;\nlet y = x + 1;".to_owned()],
+                lines: vec!["    let x = 1;\n    let y = x + 1;".to_owned()],
             }
         );
     }
@@ -290,7 +264,7 @@ mod tests {
             let y = x + 1;"}),
             MainConfig {
                 imports: vec!["std::rc::Rc".to_owned(), "crate::my::Struct".to_owned()],
-                lines: vec!["let x = 1;\nlet y = x + 1;".to_owned()],
+                lines: vec!["    let x = 1;\n    let y = x + 1;".to_owned()],
             }
         );
     }
