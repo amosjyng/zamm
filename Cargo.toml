@@ -1,0 +1,13 @@
+[package]
+name = "zamm"
+version = "0.0.1"
+authors = ["Amos Jun-yeung Ng <me@amos.ng>"]
+edition = "2018"
+description = "A literate programming tool for Yin and Yang"
+readme = "README.md"
+repository = "https://github.com/amosjyng/zamm"
+license = "GPL-3.0"
+keywords = ["codegen", "code-generation"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
