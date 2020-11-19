@@ -55,8 +55,6 @@ pub fn code_main(main_cfg: &MainConfig, codegen_cfg: &CodegenConfig) -> String {
     let code = main_cfg.lines.iter().format("\n").to_string();
 
     formatdoc! {r#"
-        #![allow(dead_code, unused_imports)]
-
         {imports}
 
         fn main() {{
