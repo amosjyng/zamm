@@ -48,3 +48,14 @@ pub fn generate_code(input_file: Option<&str>, codegen_cfg: &CodegenConfig) -> R
 pub fn generate_default_code(input_file: &str) -> Result<(), Error> {
     generate_code(Some(input_file), &CodegenConfig::default())
 }
+
+/// Generates code specifically for Yin.
+pub fn generate_yin_code(input_file: &str) -> Result<(), Error> {
+    generate_code(
+        Some(input_file),
+        &CodegenConfig {
+            yin: true,
+            ..CodegenConfig::default()
+        },
+    )
+}
