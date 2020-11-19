@@ -46,12 +46,7 @@ fn build_subdir() -> PathBuf {
 
 /// Generate code for a main function.
 pub fn code_main(main_cfg: &MainConfig, codegen_cfg: &CodegenConfig) -> String {
-    let imports = main_cfg
-        .imports
-        .iter()
-        .map(|i| format!("pub use {};", i))
-        .format("\n")
-        .to_string();
+    let imports = main_cfg.imports.iter().format("\n").to_string();
     let code = main_cfg.lines.iter().format("\n").to_string();
 
     formatdoc! {r#"
@@ -122,12 +117,7 @@ fn separate_imports(code: &str) -> MainConfig {
     let mut lines = vec![];
     for line in code.split('\n') {
         if line.starts_with("use ") {
-            imports.push(
-                line.chars()
-                    .skip(4)
-                    .take(line.chars().count() - 5)
-                    .collect(),
-            );
+            imports.push(line.to_owned());
         } else if !line.is_empty() {
             // indent code for prettier output
             lines.push(format!("    {}", line));
@@ -229,7 +219,10 @@ mod tests {
             use std::rc::Rc;
             use crate::my::Struct;"}),
             MainConfig {
-                imports: vec!["std::rc::Rc".to_owned(), "crate::my::Struct".to_owned()],
+                imports: vec![
+                    "use std::rc::Rc;".to_owned(),
+                    "use crate::my::Struct;".to_owned()
+                ],
                 lines: vec![],
             }
         );
@@ -245,7 +238,10 @@ mod tests {
             let x = 1;
             let y = x + 1;"}),
             MainConfig {
-                imports: vec!["std::rc::Rc".to_owned(), "crate::my::Struct".to_owned()],
+                imports: vec![
+                    "use std::rc::Rc;".to_owned(),
+                    "use crate::my::Struct;".to_owned()
+                ],
                 lines: vec!["    let x = 1;\n    let y = x + 1;".to_owned()],
             }
         );
@@ -261,7 +257,10 @@ mod tests {
             use crate::my::Struct;
             let y = x + 1;"}),
             MainConfig {
-                imports: vec!["std::rc::Rc".to_owned(), "crate::my::Struct".to_owned()],
+                imports: vec![
+                    "use std::rc::Rc;".to_owned(),
+                    "use crate::my::Struct;".to_owned()
+                ],
                 lines: vec!["    let x = 1;\n    let y = x + 1;".to_owned()],
             }
         );
