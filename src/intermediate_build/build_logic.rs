@@ -49,7 +49,6 @@ pub fn code_main(main_cfg: &MainConfig, codegen_cfg: &CodegenConfig) -> String {
     let imports = main_cfg
         .imports
         .iter()
-        .map(|i| format!("pub use {};", i))
         .format("\n")
         .to_string();
     let code = main_cfg.lines.iter().format("\n").to_string();
@@ -122,12 +121,7 @@ fn separate_imports(code: &str) -> MainConfig {
     let mut lines = vec![];
     for line in code.split('\n') {
         if line.starts_with("use ") {
-            imports.push(
-                line.chars()
-                    .skip(4)
-                    .take(line.chars().count() - 5)
-                    .collect(),
-            );
+            imports.push(line.to_owned());
         } else if !line.is_empty() {
             // indent code for prettier output
             lines.push(format!("    {}", line));
