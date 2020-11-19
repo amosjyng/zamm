@@ -10,6 +10,7 @@
 //! ```
 
 #![warn(missing_docs)]
+#![allow(clippy::needless_doctest_main)]
 
 /// Running commandline commands.
 pub mod commands;
