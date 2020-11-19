@@ -1,29 +1,20 @@
-mod commands;
-mod intermediate_build;
-mod parse;
-
 use clap::{crate_version, App, AppSettings, Arg, ArgMatches, SubCommand};
 use colored::*;
-use commands::{clean_autogen, run_command};
-use intermediate_build::{generate_final_code, CodegenConfig};
-use parse::{find_file, parse_input};
 use std::env;
 use std::fs;
 use std::fs::read_to_string;
 use std::io::Error;
 use std::process::exit;
 use toml::Value;
+use zamm::commands::{clean_autogen, run_command};
+use zamm::generate_code;
+use zamm::intermediate_build::CodegenConfig;
 
 /// Help text to display for the input file argument.
 const INPUT_HELP_TEXT: &str =
     "The input file containing relevant information to generate code for. Currently only Markdown \
     (extension .md) is supported. If no input file is provided, yang will look for a file named \
     `yin` with one of the above extensions, in the current directory.";
-
-struct BuildConfig<'a> {
-    input_file: Option<&'a str>,
-    codegen_cfg: CodegenConfig,
-}
 
 /// Prepare for release build.
 fn release_pre_build() -> Result<(), Error> {
@@ -96,50 +87,37 @@ fn release_post_build() -> Result<(), Error> {
     Ok(())
 }
 
-fn generate_code(build_cfg: &BuildConfig) -> Result<(), Error> {
-    let found_input = find_file(build_cfg.input_file)?;
-    let literate_rust_code = parse_input(found_input)?;
-
-    generate_final_code(&literate_rust_code, &build_cfg.codegen_cfg);
-
-    Ok(())
-}
-
 /// Generate code from the input file.
 fn build(args: &ArgMatches) -> Result<(), Error> {
-    let build_cfg = BuildConfig {
-        input_file: args.value_of("INPUT"),
-        codegen_cfg: CodegenConfig {
-            comment_autogen: args
-                .value_of("COMMENT_AUTOGEN")
-                .unwrap_or("true")
-                .parse::<bool>()
-                .unwrap(),
-            add_rustfmt_attributes: true,
-            track_autogen: args.is_present("TRACK_AUTOGEN"),
-            yin: args.is_present("YIN"),
-            release: false,
-        },
+    let input = args.value_of("INPUT");
+    let codegen_cfg = CodegenConfig {
+        comment_autogen: args
+            .value_of("COMMENT_AUTOGEN")
+            .unwrap_or("true")
+            .parse::<bool>()
+            .unwrap(),
+        add_rustfmt_attributes: true,
+        track_autogen: args.is_present("TRACK_AUTOGEN"),
+        yin: args.is_present("YIN"),
+        release: false,
     };
 
-    generate_code(&build_cfg)?;
+    generate_code(input, &codegen_cfg)?;
     Ok(())
 }
 
 fn release(args: &ArgMatches) -> Result<(), Error> {
-    let build_cfg = BuildConfig {
-        input_file: args.value_of("INPUT"),
-        codegen_cfg: CodegenConfig {
-            comment_autogen: false,
-            add_rustfmt_attributes: true,
-            track_autogen: false,
-            yin: args.is_present("YIN"),
-            release: true,
-        },
+    let input = args.value_of("INPUT");
+    let codegen_cfg = CodegenConfig {
+        comment_autogen: false,
+        add_rustfmt_attributes: true,
+        track_autogen: false,
+        yin: args.is_present("YIN"),
+        release: true,
     };
 
     release_pre_build()?;
-    generate_code(&build_cfg)?;
+    generate_code(input, &codegen_cfg)?;
     release_post_build()?;
     Ok(())
 }

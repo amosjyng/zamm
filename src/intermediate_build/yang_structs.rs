@@ -8,7 +8,7 @@ pub struct MainConfig {
     pub lines: Vec<String>,
 }
 
-/// Runtime options for code generation.
+/// Runtime options for code generation. Copied from Yang.
 #[derive(Copy, Clone)]
 pub struct CodegenConfig {
     /// Whether or not to mark each generated line of code with the autogeneration comment
@@ -30,4 +30,16 @@ pub struct CodegenConfig {
     ///    without `build.rs` to do it
     ///  * A release branch will be created, ready for cargo publishing
     pub release: bool,
+}
+
+impl Default for CodegenConfig {
+    fn default() -> Self {
+        Self {
+            comment_autogen: true,
+            add_rustfmt_attributes: true,
+            track_autogen: false,
+            yin: false,
+            release: false,
+        }
+    }
 }

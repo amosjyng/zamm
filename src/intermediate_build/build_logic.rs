@@ -175,7 +175,7 @@ fn build_codegen_binary() -> String {
     binary_path.to_owned()
 }
 
-/// Generate code using the specified code and imports.
+/// Generate code using the specified code and imports, and runs the binary.
 pub fn generate_final_code(code: &CodeExtraction, codegen_cfg: &CodegenConfig) {
     output_build_dir(code, codegen_cfg);
     let binary_path = build_codegen_binary();
