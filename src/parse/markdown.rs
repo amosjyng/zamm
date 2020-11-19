@@ -3,7 +3,9 @@ use pulldown_cmark::{CodeBlockKind, Event, Parser, Tag};
 /// Extraction of different languages from the Markdown source.
 #[derive(Debug, Default, Eq, PartialEq)]
 pub struct CodeExtraction {
+    /// The Rust code to be used in the intermediate binary.
     pub rust: String,
+    /// The Cargo dependencies that the intermediate binary will depend on.
     pub toml: String,
 }
 
