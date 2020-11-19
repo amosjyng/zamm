@@ -46,11 +46,7 @@ fn build_subdir() -> PathBuf {
 
 /// Generate code for a main function.
 pub fn code_main(main_cfg: &MainConfig, codegen_cfg: &CodegenConfig) -> String {
-    let imports = main_cfg
-        .imports
-        .iter()
-        .format("\n")
-        .to_string();
+    let imports = main_cfg.imports.iter().format("\n").to_string();
     let code = main_cfg.lines.iter().format("\n").to_string();
 
     formatdoc! {r#"
@@ -223,7 +219,10 @@ mod tests {
             use std::rc::Rc;
             use crate::my::Struct;"}),
             MainConfig {
-                imports: vec!["std::rc::Rc".to_owned(), "crate::my::Struct".to_owned()],
+                imports: vec![
+                    "use std::rc::Rc;".to_owned(),
+                    "use crate::my::Struct;".to_owned()
+                ],
                 lines: vec![],
             }
         );
@@ -239,7 +238,10 @@ mod tests {
             let x = 1;
             let y = x + 1;"}),
             MainConfig {
-                imports: vec!["std::rc::Rc".to_owned(), "crate::my::Struct".to_owned()],
+                imports: vec![
+                    "use std::rc::Rc;".to_owned(),
+                    "use crate::my::Struct;".to_owned()
+                ],
                 lines: vec!["    let x = 1;\n    let y = x + 1;".to_owned()],
             }
         );
@@ -255,7 +257,10 @@ mod tests {
             use crate::my::Struct;
             let y = x + 1;"}),
             MainConfig {
-                imports: vec!["std::rc::Rc".to_owned(), "crate::my::Struct".to_owned()],
+                imports: vec![
+                    "use std::rc::Rc;".to_owned(),
+                    "use crate::my::Struct;".to_owned()
+                ],
                 lines: vec!["    let x = 1;\n    let y = x + 1;".to_owned()],
             }
         );
