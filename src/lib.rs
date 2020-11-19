@@ -1,14 +1,14 @@
-//! ZAMM is a literate programming tool to help with Yin and Yang development. It can be used as a 
-//! binary or as a library. To have it run automatically as a part of the regular Cargo build 
+//! ZAMM is a literate programming tool to help with Yin and Yang development. It can be used as a
+//! binary or as a library. To have it run automatically as a part of the regular Cargo build
 //! process, put this in your `Cargo.toml`:
-//! 
+//!
 //! ```toml
 //! [build-dependencies]
 //! zamm = "0.1.1"
 //! ```
 //!
 //! Then define your `build.rs` as such:
-//! 
+//!
 //! ```no_run
 //! use zamm::generate_default_code;
 //!
