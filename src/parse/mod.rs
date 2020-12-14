@@ -1,6 +1,9 @@
+/// Grabs imported data.
+mod handle_imports;
 /// Literate programming support - extracts relevant code from Markdown file.
 pub mod markdown;
 
+use handle_imports::retrieve_imports;
 pub use markdown::{extract_code, CodeExtraction};
 use path_abs::{PathAbs, PathInfo};
 use std::env;
@@ -64,7 +67,7 @@ pub fn parse_input(found_input: PathAbs) -> Result<CodeExtraction, Error> {
         .map(|e| e.to_str().unwrap())
         .unwrap_or("");
     match extension {
-        "md" => Ok(extract_code(&contents)),
+        "md" => Ok(retrieve_imports(&extract_code(&contents))),
         _ => Err(Error::new(
             ErrorKind::NotFound,
             format!(
