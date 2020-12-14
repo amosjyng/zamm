@@ -119,8 +119,9 @@ fn separate_imports(code: &str) -> MainConfig {
         if line.starts_with("use ") {
             imports.push(line.to_owned());
         } else if !line.is_empty() {
-            // indent code for prettier output
-            lines.push(format!("    {}", line));
+            // originally indented code for prettier output, but turns out this indentation messes
+            // with string literals
+            lines.push(line);
         }
     }
 
@@ -207,7 +208,7 @@ mod tests {
             let y = x + 1;"}),
             MainConfig {
                 imports: vec![],
-                lines: vec!["    let x = 1;\n    let y = x + 1;".to_owned()],
+                lines: vec!["let x = 1;\nlet y = x + 1;".to_owned()],
             }
         );
     }
@@ -242,7 +243,7 @@ mod tests {
                     "use std::rc::Rc;".to_owned(),
                     "use crate::my::Struct;".to_owned()
                 ],
-                lines: vec!["    let x = 1;\n    let y = x + 1;".to_owned()],
+                lines: vec!["let x = 1;\nlet y = x + 1;".to_owned()],
             }
         );
     }
@@ -261,7 +262,7 @@ mod tests {
                     "use std::rc::Rc;".to_owned(),
                     "use crate::my::Struct;".to_owned()
                 ],
-                lines: vec!["    let x = 1;\n    let y = x + 1;".to_owned()],
+                lines: vec!["let x = 1;\nlet y = x + 1;".to_owned()],
             }
         );
     }
