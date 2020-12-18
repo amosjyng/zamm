@@ -7,6 +7,8 @@ pub struct CodeExtraction {
     pub rust: String,
     /// The Cargo dependencies that the intermediate binary will depend on.
     pub toml: String,
+    /// URLs to import ZAMM READMEs from.
+    pub imports: Vec<String>,
 }
 
 impl CodeExtraction {
@@ -41,6 +43,7 @@ pub fn extract_code(markdown: &str) -> CodeExtraction {
             Event::Text(content) => match &code_block {
                 Some(lang) if lang == "rust" => code.rust += &content,
                 Some(lang) if lang == "toml" => code.toml += &content,
+                Some(lang) if lang == "zamm" => code.imports.push(content.trim().to_string()),
                 _ => (),
             },
             Event::End(tag) => {
@@ -90,7 +93,7 @@ mod tests {
                     let x = 5;
                 "}
                 .to_owned(),
-                toml: "".to_owned()
+                ..CodeExtraction::default()
             }
         );
     }
@@ -131,7 +134,7 @@ mod tests {
                     println!("One more than x is {}", y);
                 "#}
                 .to_owned(),
-                toml: "".to_owned()
+                ..CodeExtraction::default()
             }
         );
     }
@@ -188,7 +191,81 @@ mod tests {
                     dep1 = "0.0.1"
                     dep2 = {path = "C:/Users/Me/Documents/forbidden/fruit/"}
                 "#}
-                .to_owned()
+                .to_owned(),
+                ..CodeExtraction::default()
+            }
+        );
+    }
+
+    #[test]
+    fn test_rust_extraction_multiple_blocks_toml_and_imports() {
+        assert_eq!(
+            extract_code(indoc! {r#"
+            # Some document
+
+            Let's import some things:
+
+            ```zamm
+            https://api.zamm.dev
+            ```
+
+            ```rust
+            let x = 5;
+            ```
+
+            Aha! We have some code. More?
+
+            ## Yes more
+
+            ```json
+            {"very": "devious"}
+            ```
+
+            Will it skip that?
+
+            ```
+            And this too?
+            ```
+
+            Add some dependencies.
+
+            ```toml
+            dep1 = "0.0.1"
+            ```
+
+            And more imports
+
+            ```zamm
+            http://www.asdf.com
+            ```
+
+            ```rust
+            let y = x + 1;
+            println!("One more than x is {}", y);
+            ```
+
+            So dependent on others, so very helpless:
+
+            ```toml
+            dep2 = {path = "C:/Users/Me/Documents/forbidden/fruit/"}
+            ```
+        "#}),
+            CodeExtraction {
+                rust: indoc! {r#"
+                    let x = 5;
+                    let y = x + 1;
+                    println!("One more than x is {}", y);
+                "#}
+                .to_owned(),
+                toml: indoc! {r#"
+                    dep1 = "0.0.1"
+                    dep2 = {path = "C:/Users/Me/Documents/forbidden/fruit/"}
+                "#}
+                .to_owned(),
+                imports: vec![
+                    "https://api.zamm.dev".to_owned(),
+                    "http://www.asdf.com".to_owned()
+                ],
             }
         );
     }
