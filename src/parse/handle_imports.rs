@@ -24,8 +24,15 @@ async fn download(url: String) -> io::Result<CodeExtraction> {
 /// Add imported code to CodeExtraction.
 pub fn retrieve_imports(extraction: &CodeExtraction) -> io::Result<CodeExtraction> {
     let mut futures = vec![];
-    for url in &extraction.imports {
-        futures.push(download(url.clone()));
+    let non_empty_imports: Vec<&String> = extraction
+        .imports
+        .iter()
+        .filter(|u| !u.is_empty())
+        .collect();
+    for url in non_empty_imports {
+        if url.starts_with("http") {
+            futures.push(download(url.clone()));
+        }
     }
 
     let mut final_extraction = CodeExtraction::default();
