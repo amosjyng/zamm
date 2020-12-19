@@ -65,7 +65,7 @@ pub fn find_file(specified_file: Option<&str>) -> Result<PathAbs, Error> {
     }
 }
 
-/// Parse the giveninput file.
+/// Parse the given input file.
 pub fn parse_input(found_input: PathAbs) -> Result<ParseOutput, Error> {
     println!(
         "cargo:rerun-if-changed={}",
@@ -85,7 +85,7 @@ pub fn parse_input(found_input: PathAbs) -> Result<ParseOutput, Error> {
                 .unwrap()
                 .to_owned(),
             markdown: contents.to_owned(),
-            extractions: retrieve_imports(&extract_code(&contents)),
+            extractions: retrieve_imports(&extract_code(&contents))?,
         }),
         _ => Err(Error::new(
             ErrorKind::NotFound,
