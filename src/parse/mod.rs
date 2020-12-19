@@ -14,6 +14,16 @@ use std::path::Path;
 /// All supported input filename extensions.
 pub const SUPPORTED_EXTENSIONS: &[&str] = &["md"];
 
+/// Parse output, including the original markdown text.
+pub struct ParseOutput {
+    /// The original filename.
+    pub filename: String,
+    /// The original markdown text.
+    pub markdown: String,
+    /// Code extractions from the original markdown.
+    pub extractions: CodeExtraction,
+}
+
 /// Find the right input file.
 pub fn find_file(specified_file: Option<&str>) -> Result<PathAbs, Error> {
     match specified_file {
@@ -56,7 +66,7 @@ pub fn find_file(specified_file: Option<&str>) -> Result<PathAbs, Error> {
 }
 
 /// Parse the giveninput file.
-pub fn parse_input(found_input: PathAbs) -> Result<CodeExtraction, Error> {
+pub fn parse_input(found_input: PathAbs) -> Result<ParseOutput, Error> {
     println!(
         "cargo:rerun-if-changed={}",
         found_input.as_os_str().to_str().unwrap()
@@ -67,7 +77,16 @@ pub fn parse_input(found_input: PathAbs) -> Result<CodeExtraction, Error> {
         .map(|e| e.to_str().unwrap())
         .unwrap_or("");
     match extension {
-        "md" => Ok(retrieve_imports(&extract_code(&contents))),
+        "md" => Ok(ParseOutput {
+            filename: found_input
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_owned(),
+            markdown: contents.to_owned(),
+            extractions: retrieve_imports(&extract_code(&contents)),
+        }),
         _ => Err(Error::new(
             ErrorKind::NotFound,
             format!(

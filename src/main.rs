@@ -1,4 +1,5 @@
 use clap::{crate_version, App, AppSettings, Arg, ArgMatches, SubCommand};
+use cloud_storage::Object;
 use colored::*;
 use std::env;
 use std::fs;
@@ -9,12 +10,24 @@ use toml::Value;
 use zamm::commands::{clean_autogen, run_command};
 use zamm::generate_code;
 use zamm::intermediate_build::CodegenConfig;
+use zamm::parse::ParseOutput;
 
 /// Help text to display for the input file argument.
 const INPUT_HELP_TEXT: &str =
     "The input file containing relevant information to generate code for. Currently only Markdown \
     (extension .md) is supported. If no input file is provided, yang will look for a file named \
     `yin` with one of the above extensions, in the current directory.";
+
+/// GCS bucket containing all build files.
+const GCS_BUCKET: &str = "api.zamm.dev";
+
+#[derive(Default)]
+struct ProjectInfo {
+    /// The name of the project currently being built.
+    pub name: String,
+    /// The version of the project currently being built.
+    pub version: String,
+}
 
 /// Prepare for release build.
 fn release_pre_build() -> Result<(), Error> {
@@ -47,42 +60,67 @@ fn update_cargo_lock(package_name: &str, new_version: &str) -> Result<(), Error>
 
 /// Get version of the project in the current directory. Also removes any non-release tags from the
 /// version (e.g. any "-beta" or "-alpha" suffixes).
-fn local_project_version() -> Result<String, Error> {
+fn local_project_version() -> Result<ProjectInfo, Error> {
     let cargo_toml = "Cargo.toml";
     let build_contents = read_to_string(cargo_toml)?;
     let mut build_cfg = build_contents.parse::<Value>().unwrap();
-    let release_version = {
-        let version = build_cfg["package"]["version"].as_str().unwrap();
-        if !version.contains('-') {
-            return Ok(version.to_owned());
-        }
-        // otherwise, get rid of tag
-        version.split('-').next().unwrap().to_owned()
+    let mut build_info = ProjectInfo {
+        name: build_cfg["package"]["name"].as_str().unwrap().to_owned(),
+        version: build_cfg["package"]["version"].as_str().unwrap().to_owned(),
     };
-    {
-        build_cfg["package"]["version"] = toml::Value::String(release_version.clone());
-        update_cargo_lock(
-            build_cfg["package"]["name"].as_str().unwrap(),
-            &release_version,
-        )?;
+    if !build_info.version.contains('-') {
+        return Ok(build_info);
     }
+    // otherwise, get rid of non-prod tag (e.g. "0.0.1-beta" becomes "0.0.1")
+    build_info.version = build_info.version.split('-').next().unwrap().to_owned();
+    build_cfg["package"]["version"] = toml::Value::String(build_info.version.clone());
+    update_cargo_lock(&build_info.name, &build_info.version)?;
     fs::write(cargo_toml, build_cfg.to_string())?;
-    Ok(release_version)
+    Ok(build_info)
 }
 
 /// Destructively prepare repo for release after build.
-fn release_post_build() -> Result<(), Error> {
-    let version = local_project_version()?;
+fn release_post_build(output: &ParseOutput) -> Result<(), Error> {
+    let project = local_project_version()?;
 
+    // Git commands:
     // switch to new release branch
-    let release_branch = format!("release/v{}", version);
+    let release_branch = format!("release/v{}", project.version);
     run_command("git", &["checkout", "-b", release_branch.as_str()]);
     // remove build.rs because it won't be useful on docs.rs anyways
     run_command("git", &["rm", "-f", "build.rs"]);
     // commit everything
     run_command("git", &["add", "."]);
-    let commit_message = format!("Creating release v{}", version);
+    let commit_message = format!("Creating release v{}", project.version);
     run_command("git", &["commit", "-m", commit_message.as_str()]);
+
+    // GCS commands:
+    match env::var("SERVICE_ACCOUNT") {
+        Ok(_) => {
+            // remove zamm_ prefix for official ZAMM projects
+            let canonical_name = project.name.replace("zamm_", "");
+            let gcs_path = format!("v1/books/zamm/{}/{}/{}", canonical_name, project.version, output.filename);
+            let url = format!("https://api.zamm.dev/{}", gcs_path);
+            // we just want to check if the file already exists, but there doesn't seem to be a way 
+            // to do only that
+            if Object::read_sync(GCS_BUCKET, &gcs_path).is_ok() {
+                let exists_warning = format!(
+                    "Not uploading build file because there already exists one at {}", url
+                );
+                println!("{}", exists_warning.yellow().bold());
+            } else {
+                Object::create_sync(
+                    GCS_BUCKET,
+                    output.markdown.as_bytes().to_vec(),
+                    &gcs_path,
+                    "text/markdown; charset=UTF-8",
+                ).unwrap();
+                println!("Uploaded input file to {}", url);
+            }
+        },
+        Err(_) =>
+            println!("{}", "Not uploading build file to zamm.dev because the SERVICE_ACCOUNT environment variable is not set for GCS access.".yellow().bold()),
+    };
 
     Ok(())
 }
@@ -117,8 +155,8 @@ fn release(args: &ArgMatches) -> Result<(), Error> {
     };
 
     release_pre_build()?;
-    generate_code(input, &codegen_cfg)?;
-    release_post_build()?;
+    let parse_output = generate_code(input, &codegen_cfg)?;
+    release_post_build(&parse_output)?;
     Ok(())
 }
 
