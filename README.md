@@ -12,6 +12,8 @@ It builds an intermediate code-generation binary from the provided Markdown file
 cargo install zamm
 ```
 
+Note that on Windows, you will need to follow the instructions [here](https://github.com/sfackler/rust-openssl/tree/5948898e54882c0bedd12d87569eb4dbee5bbca7#windows-msvc) to set up OpenSSL.
+
 ## Usage
 
 ```text
