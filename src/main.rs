@@ -292,7 +292,7 @@ fn main() {
     exit(match result {
         Ok(_) => 0,
         Err(e) => {
-            eprintln!("{}", e);
+            eprintln!("{}", e.to_string().red().bold());
             1
         }
     })
