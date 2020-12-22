@@ -1,6 +1,6 @@
 [package]
 name = "zamm"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["Amos Jun-yeung Ng <me@amos.ng>"]
 edition = "2018"
 description = "A literate programming tool for Yin and Yang"
