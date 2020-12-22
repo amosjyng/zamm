@@ -5,6 +5,7 @@ use colored::*;
 use indoc::formatdoc;
 use itertools::Itertools;
 use path_abs::PathAbs;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -113,11 +114,18 @@ fn output_build_dir(code: &CodeExtraction, codegen_cfg: &CodegenConfig) {
 
 /// Separate imports embedded in the code, similar to how `rustdoc` does it.
 fn separate_imports(code: &str) -> MainConfig {
-    let mut imports = vec![];
+    let mut import_set = HashSet::new();
     let mut lines = vec![];
     for line in code.split('\n') {
         if line.starts_with("use ") {
-            imports.push(line.to_owned());
+            if import_set.contains(line) {
+                println!(
+                    "{}",
+                    format!("Repeated import found: {}", line).yellow().bold()
+                );
+            } else {
+                import_set.insert(line.to_owned());
+            }
         } else if !line.is_empty() {
             // originally indented code for prettier output, but turns out this indentation messes
             // with string literals
@@ -130,6 +138,8 @@ fn separate_imports(code: &str) -> MainConfig {
         // combine lines together into one fragment to preserve indentation
         combined_lines.push(lines.iter().format("\n").to_string());
     }
+    let mut imports: Vec<String> = import_set.into_iter().collect();
+    imports.sort();
     MainConfig {
         imports,
         lines: combined_lines,
@@ -221,8 +231,8 @@ mod tests {
             use crate::my::Struct;"}),
             MainConfig {
                 imports: vec![
+                    "use crate::my::Struct;".to_owned(),
                     "use std::rc::Rc;".to_owned(),
-                    "use crate::my::Struct;".to_owned()
                 ],
                 lines: vec![],
             }
@@ -240,8 +250,8 @@ mod tests {
             let y = x + 1;"}),
             MainConfig {
                 imports: vec![
+                    "use crate::my::Struct;".to_owned(),
                     "use std::rc::Rc;".to_owned(),
-                    "use crate::my::Struct;".to_owned()
                 ],
                 lines: vec!["let x = 1;\nlet y = x + 1;".to_owned()],
             }
@@ -259,8 +269,8 @@ mod tests {
             let y = x + 1;"}),
             MainConfig {
                 imports: vec![
+                    "use crate::my::Struct;".to_owned(),
                     "use std::rc::Rc;".to_owned(),
-                    "use crate::my::Struct;".to_owned()
                 ],
                 lines: vec!["let x = 1;\nlet y = x + 1;".to_owned()],
             }
