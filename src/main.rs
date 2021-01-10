@@ -93,12 +93,28 @@ fn branch_exists(branch: &str) -> bool {
 }
 
 fn get_commit_sha(branch: &str) -> Result<String> {
-    run_command("git", &["rev-parse", "--short", branch])
+    run_command("git", &["rev-parse", "--short", branch]).map(|b| b.trim().to_owned())
+}
+
+fn commit_all(message: &str) -> Result<String> {
+    run_command("git", &["add", "."])?;
+    run_command("git", &["commit", "-m", message])
+}
+
+/// Set parents for the HEAD commit
+fn set_parents(parent1: &str, parent2: &str) -> Result<String> {
+    let current_commit = get_commit_sha("HEAD")?;
+    run_command(
+        "git",
+        &["replace", "--graft", &current_commit, parent1, parent2],
+    )
 }
 
 /// Destructively prepare repo for release after build.
 fn release_post_build(output: &ParseOutput) -> Result<()> {
     let project = local_project_version()?;
+    // the commit the code was build from
+    let build_commit = get_commit_sha("HEAD")?;
 
     // Git commands:
     if branch_exists(TEMP_BRANCH) {
@@ -111,40 +127,27 @@ fn release_post_build(output: &ParseOutput) -> Result<()> {
     // reformat code
     run_command("cargo", &["fmt"])?;
     // commit everything
-    run_command("git", &["add", "."])?;
     let commit_message = format!("Creating release v{}", project.version);
-    run_command("git", &["commit", "-m", commit_message.as_str()])?;
+    commit_all(&commit_message)?;
 
     if branch_exists(RELEASE_BRANCH) {
         // release branch already exists, diff with the last commit
-        let current_commit = get_commit_sha("HEAD")?;
-        let current_parent = run_command("git", &["rev-parse", "--short", "HEAD^"])?;
         let last_release = get_commit_sha(RELEASE_BRANCH)?;
-        println!(
-            "Setting parents {} and {} for commit {}",
-            last_release.trim(),
-            current_parent.trim(),
-            current_commit.trim()
-        );
-        run_command(
-            "git",
-            &[
-                "replace",
-                "--graft",
-                current_commit.trim(),
-                last_release.trim(),
-                current_parent.trim(),
-            ],
-        )?;
+        set_parents(&last_release, &build_commit)?;
         run_command("git", &["checkout", RELEASE_BRANCH])?;
         run_command("git", &["merge", TEMP_BRANCH])?;
+        // there's probably a more efficient way to do this, but this seems to get GitUp to display
+        // a diff of the first parent instead of the second
+        run_command("git", &["reset", "HEAD~1"])?;
+        commit_all(&commit_message)?;
+        set_parents(&last_release, &build_commit)?;
     } else {
         // release branch doesn't yet exist, creating it is all we need to do
         run_command("git", &["checkout", "-b", RELEASE_BRANCH])?;
     }
 
     // Temp branch cleanup
-    run_command("git", &["branch", "-d", TEMP_BRANCH])?;
+    run_command("git", &["branch", "-D", TEMP_BRANCH])?;
 
     // GCS commands:
     match env::var("SERVICE_ACCOUNT") {
