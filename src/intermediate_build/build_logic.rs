@@ -8,9 +8,9 @@ use path_abs::PathAbs;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
+use std::io::{Error, ErrorKind, Result};
 use std::path::Path;
 use std::path::PathBuf;
-use std::process::exit;
 
 /// Directory to put build files in.
 const ZAMM_INTERMEDIATE_DIR: &str = ".zamm";
@@ -146,7 +146,8 @@ fn separate_imports(code: &str) -> MainConfig {
     }
 }
 
-fn build_codegen_binary() -> String {
+/// Builds the codegen binary, and returns the path to said binary.
+fn build_codegen_binary() -> Result<String> {
     let src_dir = env::current_dir().unwrap();
     let subdir = build_subdir();
     env::set_current_dir(&subdir).unwrap();
@@ -155,7 +156,7 @@ fn build_codegen_binary() -> String {
         "Now building codegen binary in {} ...",
         subdir.to_str().unwrap()
     );
-    run_streamed_command("cargo", vec!["build"]);
+    run_streamed_command("cargo", vec!["build"])?;
 
     // Verify successful build
     let mut binary = subdir;
@@ -165,16 +166,13 @@ fn build_codegen_binary() -> String {
     }
     let binary_path = binary.to_str().unwrap();
     if !binary.exists() {
-        eprintln!(
-            "{}",
+        return Err(Error::new(
+            ErrorKind::NotFound,
             format!(
                 "Codegen binary was not found at expected location {}",
                 binary_path
-            )
-            .red()
-            .bold()
-        );
-        exit(1);
+            ),
+        ));
     }
     println!("Binary successfully built at {}", binary_path);
     println!(
@@ -183,15 +181,15 @@ fn build_codegen_binary() -> String {
     );
     env::set_current_dir(&src_dir).unwrap();
 
-    binary_path.to_owned()
+    Ok(binary_path.to_owned())
 }
 
 /// Generate code using the specified code and imports, and runs the binary.
-pub fn generate_final_code(code: &CodeExtraction, codegen_cfg: &CodegenConfig) {
+pub fn generate_final_code(code: &CodeExtraction, codegen_cfg: &CodegenConfig) -> Result<()> {
     output_build_dir(code, codegen_cfg);
-    let binary_path = build_codegen_binary();
+    let binary_path = build_codegen_binary()?;
     println!("==================== RUNNING CODEGEN ====================");
-    run_streamed_command(&binary_path, Vec::<&str>::new());
+    run_streamed_command(&binary_path, Vec::<&str>::new())
 }
 
 #[cfg(test)]
