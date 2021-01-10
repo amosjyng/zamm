@@ -24,8 +24,11 @@ where
         Ok(std::str::from_utf8(&result.stdout).unwrap().to_owned())
     } else {
         let stderr = std::str::from_utf8(&result.stderr).unwrap();
-        let err_msg = format!("Command failed: {}\n\nStderr:{}", full_command, stderr);
-        Err(Error::new(ErrorKind::Other, err_msg))
+        let mut err_msg = format!("Command failed: {}", full_command);
+        if !stderr.is_empty() {
+            err_msg += &format!("\n\n{}", stderr);
+        }
+        Err(Error::new(ErrorKind::Other, err_msg.trim()))
     }
 }
 
