@@ -45,3 +45,7 @@ zamm build
 ```
 
 The code will be generated inside the current directory.
+
+### Overriding the main input file
+
+To add overrides to the main input file, create another README file named `zamm_override.md`. This can be useful for using a local version of Yin or Yang to build the other one, without having the local path committed to Git. The Cargo equivalent is [here](https://doc.rust-lang.org/cargo/reference/overriding-dependencies.html), although that requires changes to the same file and therefore cannot be Git-ignored quite as easily.

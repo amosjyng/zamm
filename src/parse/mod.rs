@@ -14,6 +14,9 @@ use std::path::Path;
 /// All supported input filename extensions.
 pub const SUPPORTED_EXTENSIONS: &[&str] = &["md"];
 
+/// Filename for ZAMM override file.
+pub const ZAMM_OVERRIDE_NAME: &str = "zamm_override.md";
+
 /// Parse output, including the original markdown text.
 pub struct ParseOutput {
     /// The original filename.
@@ -65,6 +68,16 @@ pub fn find_file(specified_file: Option<&str>) -> Result<PathAbs, Error> {
     }
 }
 
+fn retrieve_override() -> Result<Option<String>, Error> {
+    let override_path = PathAbs::new(Path::new(ZAMM_OVERRIDE_NAME))?;
+    if override_path.exists() {
+        let override_content = read_to_string(&override_path)?;
+        Ok(Some(override_content))
+    } else {
+        Ok(None)
+    }
+}
+
 /// Parse the given input file.
 pub fn parse_input(found_input: PathAbs) -> Result<ParseOutput, Error> {
     println!(
@@ -77,16 +90,30 @@ pub fn parse_input(found_input: PathAbs) -> Result<ParseOutput, Error> {
         .map(|e| e.to_str().unwrap())
         .unwrap_or("");
     match extension {
-        "md" => Ok(ParseOutput {
-            filename: found_input
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_owned(),
-            markdown: contents.to_owned(),
-            extractions: retrieve_imports(&extract_code(&contents))?,
-        }),
+        "md" => {
+            let mut initial_extraction = extract_code(&contents);
+            let override_content: String = retrieve_override()?.unwrap_or_default();
+            let override_extraction = extract_code(&override_content);
+
+            initial_extraction.rust += &override_extraction.rust;
+            if !override_extraction.imports.is_empty() {
+                initial_extraction.imports = override_extraction.imports;
+            }
+            if !override_extraction.toml.is_empty() {
+                initial_extraction.toml = override_extraction.toml;
+            }
+
+            Ok(ParseOutput {
+                filename: found_input
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_owned(),
+                markdown: contents,
+                extractions: retrieve_imports(&initial_extraction)?,
+            })
+        }
         _ => Err(Error::new(
             ErrorKind::NotFound,
             format!(
