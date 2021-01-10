@@ -110,7 +110,7 @@ pub fn parse_input(found_input: PathAbs) -> Result<ParseOutput, Error> {
                     .to_str()
                     .unwrap()
                     .to_owned(),
-                markdown: contents.to_owned(),
+                markdown: contents,
                 extractions: retrieve_imports(&initial_extraction)?,
             })
         }
