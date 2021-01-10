@@ -22,6 +22,12 @@ const INPUT_HELP_TEXT: &str =
 /// GCS bucket containing all build files.
 const GCS_BUCKET: &str = "api.zamm.dev";
 
+/// Long-running release branch name.
+const RELEASE_BRANCH: &str = "releases";
+
+/// Short-lived temp branch for commit munging.
+const TEMP_BRANCH: &str = "zamm-temp-release";
+
 #[derive(Default)]
 struct ProjectInfo {
     /// The name of the project currently being built.
@@ -82,20 +88,63 @@ fn local_project_version() -> Result<ProjectInfo> {
     Ok(build_info)
 }
 
+fn branch_exists(branch: &str) -> bool {
+    run_command("git", &["rev-parse", "--verify", branch]).is_ok()
+}
+
+fn get_commit_sha(branch: &str) -> Result<String> {
+    run_command("git", &["rev-parse", "--short", branch])
+}
+
 /// Destructively prepare repo for release after build.
 fn release_post_build(output: &ParseOutput) -> Result<()> {
     let project = local_project_version()?;
 
     // Git commands:
-    // switch to new release branch
-    let release_branch = format!("release/v{}", project.version);
-    run_command("git", &["checkout", "-b", release_branch.as_str()])?;
+    if branch_exists(TEMP_BRANCH) {
+        // force remove temp branch, as it won't be useful for anything else
+        run_command("git", &["branch", "-D", TEMP_BRANCH])?;
+    }
+    run_command("git", &["checkout", "-b", TEMP_BRANCH])?;
     // remove build.rs because it won't be useful on docs.rs anyways
     run_command("git", &["rm", "-f", "build.rs"])?;
+    // reformat code
+    run_command("cargo", &["fmt"])?;
     // commit everything
     run_command("git", &["add", "."])?;
     let commit_message = format!("Creating release v{}", project.version);
     run_command("git", &["commit", "-m", commit_message.as_str()])?;
+
+    if branch_exists(RELEASE_BRANCH) {
+        // release branch already exists, diff with the last commit
+        let current_commit = get_commit_sha("HEAD")?;
+        let current_parent = run_command("git", &["rev-parse", "--short", "HEAD^"])?;
+        let last_release = get_commit_sha(RELEASE_BRANCH)?;
+        println!(
+            "Setting parents {} and {} for commit {}",
+            last_release.trim(),
+            current_parent.trim(),
+            current_commit.trim()
+        );
+        run_command(
+            "git",
+            &[
+                "replace",
+                "--graft",
+                current_commit.trim(),
+                last_release.trim(),
+                current_parent.trim(),
+            ],
+        )?;
+        run_command("git", &["checkout", RELEASE_BRANCH])?;
+        run_command("git", &["merge", TEMP_BRANCH])?;
+    } else {
+        // release branch doesn't yet exist, creating it is all we need to do
+        run_command("git", &["checkout", "-b", RELEASE_BRANCH])?;
+    }
+
+    // Temp branch cleanup
+    run_command("git", &["branch", "-d", TEMP_BRANCH])?;
 
     // GCS commands:
     match env::var("SERVICE_ACCOUNT") {
