@@ -1,7 +1,7 @@
 use super::{CodegenConfig, MainConfig};
 use crate::commands::run_streamed_command;
 use crate::parse::CodeExtraction;
-use colored::*;
+use crate::warn;
 use indoc::formatdoc;
 use itertools::Itertools;
 use path_abs::PathAbs;
@@ -119,10 +119,7 @@ fn separate_imports(code: &str) -> MainConfig {
     for line in code.split('\n') {
         if line.starts_with("use ") {
             if import_set.contains(line) {
-                println!(
-                    "{}",
-                    format!("Repeated import found: {}", line).yellow().bold()
-                );
+                warn!("Repeated import found: {}", line);
             } else {
                 import_set.insert(line.to_owned());
             }

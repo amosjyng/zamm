@@ -7,11 +7,11 @@ use std::fs::read_to_string;
 use std::io::{Error, ErrorKind, Result};
 use std::process::exit;
 use toml::Value;
-use zamm::commands;
 use zamm::commands::run_command;
 use zamm::generate_code;
 use zamm::intermediate_build::CodegenConfig;
 use zamm::parse::ParseOutput;
+use zamm::{commands, warn};
 
 /// Help text to display for the input file argument.
 const INPUT_HELP_TEXT: &str =
@@ -107,10 +107,7 @@ fn release_post_build(output: &ParseOutput) -> Result<()> {
             // we just want to check if the file already exists, but there doesn't seem to be a way 
             // to do only that
             if Object::read_sync(GCS_BUCKET, &gcs_path).is_ok() {
-                let exists_warning = format!(
-                    "Not uploading build file because there already exists one at {}", url
-                );
-                println!("{}", exists_warning.yellow().bold());
+                warn!("Not uploading build file because there already exists one at {}", url);
             } else {
                 Object::create_sync(
                     GCS_BUCKET,
@@ -122,7 +119,7 @@ fn release_post_build(output: &ParseOutput) -> Result<()> {
             }
         },
         Err(_) =>
-            println!("{}", "Not uploading build file to zamm.dev because the SERVICE_ACCOUNT environment variable is not set for GCS access.".yellow().bold()),
+            warn!("Not uploading build file to zamm.dev because the SERVICE_ACCOUNT environment variable is not set for GCS access."),
     };
 
     Ok(())

@@ -63,3 +63,12 @@ pub fn generate_yin_code(input_file: &str) -> Result<ParseOutput, Error> {
         },
     )
 }
+
+/// Prints a warning to stdout.
+#[macro_export]
+macro_rules! warn {
+    ($warning:tt) => (println!("{}", colored::Colorize::bold(colored::Colorize::yellow($warning))));
+    ($($arg:tt)*) => ({
+        println!("{}", colored::Colorize::bold(colored::Colorize::yellow(format!($($arg)*).as_str())));
+    })
+}
