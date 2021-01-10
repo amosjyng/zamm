@@ -4,14 +4,14 @@ use colored::*;
 use std::env;
 use std::fs;
 use std::fs::read_to_string;
-use std::io::Error;
+use std::io::{Error, ErrorKind, Result};
 use std::process::exit;
 use toml::Value;
-use zamm::commands;
 use zamm::commands::run_command;
 use zamm::generate_code;
 use zamm::intermediate_build::CodegenConfig;
 use zamm::parse::ParseOutput;
+use zamm::{commands, warn};
 
 /// Help text to display for the input file argument.
 const INPUT_HELP_TEXT: &str =
@@ -22,6 +22,12 @@ const INPUT_HELP_TEXT: &str =
 /// GCS bucket containing all build files.
 const GCS_BUCKET: &str = "api.zamm.dev";
 
+/// Long-running release branch name.
+const RELEASE_BRANCH: &str = "releases";
+
+/// Short-lived temp branch for commit munging.
+const TEMP_BRANCH: &str = "zamm-temp-release";
+
 #[derive(Default)]
 struct ProjectInfo {
     /// The name of the project currently being built.
@@ -31,21 +37,23 @@ struct ProjectInfo {
 }
 
 /// Prepare for release build.
-fn release_pre_build() -> Result<(), Error> {
-    if !run_command("git", &["status", "--porcelain"]).is_empty() {
-        eprintln!(
-            "{}",
-            "Git repo dirty, commit changes before releasing."
-                .red()
-                .bold()
-        );
-        exit(1);
+fn release_pre_build() -> Result<()> {
+    if !run_command("git", &["status", "--porcelain"])?.is_empty() {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "{}",
+                "Git repo dirty, commit changes before releasing."
+                    .red()
+                    .bold()
+            ),
+        ));
     }
     commands::clean()?;
     Ok(())
 }
 
-fn update_cargo_lock(package_name: &str, new_version: &str) -> Result<(), Error> {
+fn update_cargo_lock(package_name: &str, new_version: &str) -> Result<()> {
     let cargo_lock = "Cargo.lock";
     let lock_contents = read_to_string(cargo_lock)?;
     let mut lock_cfg = lock_contents.parse::<Value>().unwrap();
@@ -61,7 +69,7 @@ fn update_cargo_lock(package_name: &str, new_version: &str) -> Result<(), Error>
 
 /// Get version of the project in the current directory. Also removes any non-release tags from the
 /// version (e.g. any "-beta" or "-alpha" suffixes).
-fn local_project_version() -> Result<ProjectInfo, Error> {
+fn local_project_version() -> Result<ProjectInfo> {
     let cargo_toml = "Cargo.toml";
     let build_contents = read_to_string(cargo_toml)?;
     let mut build_cfg = build_contents.parse::<Value>().unwrap();
@@ -80,20 +88,66 @@ fn local_project_version() -> Result<ProjectInfo, Error> {
     Ok(build_info)
 }
 
+fn branch_exists(branch: &str) -> bool {
+    run_command("git", &["rev-parse", "--verify", branch]).is_ok()
+}
+
+fn get_commit_sha(branch: &str) -> Result<String> {
+    run_command("git", &["rev-parse", "--short", branch]).map(|b| b.trim().to_owned())
+}
+
+fn commit_all(message: &str) -> Result<String> {
+    run_command("git", &["add", "."])?;
+    run_command("git", &["commit", "-m", message])
+}
+
+/// Set parents for the HEAD commit
+fn set_parents(parent1: &str, parent2: &str) -> Result<String> {
+    let current_commit = get_commit_sha("HEAD")?;
+    run_command(
+        "git",
+        &["replace", "--graft", &current_commit, parent1, parent2],
+    )
+}
+
 /// Destructively prepare repo for release after build.
-fn release_post_build(output: &ParseOutput) -> Result<(), Error> {
+fn release_post_build(output: &ParseOutput) -> Result<()> {
     let project = local_project_version()?;
+    // the commit the code was build from
+    let build_commit = get_commit_sha("HEAD")?;
 
     // Git commands:
-    // switch to new release branch
-    let release_branch = format!("release/v{}", project.version);
-    run_command("git", &["checkout", "-b", release_branch.as_str()]);
+    if branch_exists(TEMP_BRANCH) {
+        // force remove temp branch, as it won't be useful for anything else
+        run_command("git", &["branch", "-D", TEMP_BRANCH])?;
+    }
+    run_command("git", &["checkout", "-b", TEMP_BRANCH])?;
     // remove build.rs because it won't be useful on docs.rs anyways
-    run_command("git", &["rm", "-f", "build.rs"]);
+    run_command("git", &["rm", "-f", "build.rs"])?;
+    // reformat code
+    run_command("cargo", &["fmt"])?;
     // commit everything
-    run_command("git", &["add", "."]);
     let commit_message = format!("Creating release v{}", project.version);
-    run_command("git", &["commit", "-m", commit_message.as_str()]);
+    commit_all(&commit_message)?;
+
+    if branch_exists(RELEASE_BRANCH) {
+        // release branch already exists, diff with the last commit
+        let last_release = get_commit_sha(RELEASE_BRANCH)?;
+        set_parents(&last_release, &build_commit)?;
+        run_command("git", &["checkout", RELEASE_BRANCH])?;
+        run_command("git", &["merge", TEMP_BRANCH])?;
+        // there's probably a more efficient way to do this, but this seems to get GitUp to display
+        // a diff of the first parent instead of the second
+        run_command("git", &["reset", "HEAD~1"])?;
+        commit_all(&commit_message)?;
+        set_parents(&last_release, &build_commit)?;
+    } else {
+        // release branch doesn't yet exist, creating it is all we need to do
+        run_command("git", &["checkout", "-b", RELEASE_BRANCH])?;
+    }
+
+    // Temp branch cleanup
+    run_command("git", &["branch", "-D", TEMP_BRANCH])?;
 
     // GCS commands:
     match env::var("SERVICE_ACCOUNT") {
@@ -105,10 +159,7 @@ fn release_post_build(output: &ParseOutput) -> Result<(), Error> {
             // we just want to check if the file already exists, but there doesn't seem to be a way 
             // to do only that
             if Object::read_sync(GCS_BUCKET, &gcs_path).is_ok() {
-                let exists_warning = format!(
-                    "Not uploading build file because there already exists one at {}", url
-                );
-                println!("{}", exists_warning.yellow().bold());
+                warn!("Not uploading build file because there already exists one at {}", url);
             } else {
                 Object::create_sync(
                     GCS_BUCKET,
@@ -120,14 +171,14 @@ fn release_post_build(output: &ParseOutput) -> Result<(), Error> {
             }
         },
         Err(_) =>
-            println!("{}", "Not uploading build file to zamm.dev because the SERVICE_ACCOUNT environment variable is not set for GCS access.".yellow().bold()),
+            warn!("Not uploading build file to zamm.dev because the SERVICE_ACCOUNT environment variable is not set for GCS access."),
     };
 
     Ok(())
 }
 
 /// Generate code from the input file.
-fn build(args: &ArgMatches) -> Result<(), Error> {
+fn build(args: &ArgMatches) -> Result<()> {
     let input = args.value_of("INPUT");
     let codegen_cfg = CodegenConfig {
         comment_autogen: args
@@ -145,7 +196,7 @@ fn build(args: &ArgMatches) -> Result<(), Error> {
     Ok(())
 }
 
-fn release(args: &ArgMatches) -> Result<(), Error> {
+fn release(args: &ArgMatches) -> Result<()> {
     let input = args.value_of("INPUT");
     let codegen_cfg = CodegenConfig {
         comment_autogen: false,
@@ -162,19 +213,19 @@ fn release(args: &ArgMatches) -> Result<(), Error> {
 }
 
 /// Clean all autogenerated files.
-fn clean(_: &ArgMatches) -> Result<(), Error> {
+fn clean(_: &ArgMatches) -> Result<()> {
     commands::clean()?;
     Ok(())
 }
 
 /// Run various tests and checks.
-fn test(args: &ArgMatches) -> Result<(), Error> {
+fn test(args: &ArgMatches) -> Result<()> {
     let yang = args.is_present("YANG");
 
     println!("Formatting...");
-    run_command("cargo", &["fmt"]);
+    run_command("cargo", &["fmt"])?;
     println!("Running tests...");
-    run_command("cargo", &["test"]);
+    run_command("cargo", &["test"])?;
     println!("Running lints...");
     run_command(
         "cargo",
@@ -186,10 +237,10 @@ fn test(args: &ArgMatches) -> Result<(), Error> {
             "-D",
             "warnings",
         ],
-    );
+    )?;
     if yang {
         println!("Running yang build...");
-        run_command("cargo", &["run", "build"]);
+        run_command("cargo", &["run", "build"])?;
     }
     Ok(())
 }

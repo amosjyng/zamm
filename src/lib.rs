@@ -44,8 +44,7 @@ pub fn generate_code(
     println!("cargo:rerun-if-changed=build.rs");
     let found_input = find_file(input_file)?;
     let literate_rust_code = parse_input(found_input)?;
-    generate_final_code(&literate_rust_code.extractions, codegen_cfg);
-    Ok(literate_rust_code)
+    generate_final_code(&literate_rust_code.extractions, codegen_cfg).map(|_| literate_rust_code)
 }
 
 /// Generates an intermediate binary from the given file and runs it with default codegen settings.
@@ -63,4 +62,13 @@ pub fn generate_yin_code(input_file: &str) -> Result<ParseOutput, Error> {
             ..CodegenConfig::default()
         },
     )
+}
+
+/// Prints a warning to stdout.
+#[macro_export]
+macro_rules! warn {
+    ($warning:tt) => (println!("{}", colored::Colorize::bold(colored::Colorize::yellow($warning))));
+    ($($arg:tt)*) => ({
+        println!("{}", colored::Colorize::bold(colored::Colorize::yellow(format!($($arg)*).as_str())));
+    })
 }
