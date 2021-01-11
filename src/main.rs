@@ -96,17 +96,8 @@ fn get_commit_sha(branch: &str) -> Result<String> {
 }
 
 fn commit_all(message: &str) -> Result<String> {
-    run_command("git", &["add", "."])?;
+    run_command("git", &["add", "-A"])?;
     run_command("git", &["commit", "-m", message])
-}
-
-/// Set parents for the HEAD commit
-fn set_parents(parent1: &str, parent2: &str) -> Result<String> {
-    let current_commit = get_commit_sha("HEAD")?;
-    run_command(
-        "git",
-        &["replace", "--graft", &current_commit, parent1, parent2],
-    )
 }
 
 fn next_version_string(current_version: &str) -> String {
@@ -143,15 +134,12 @@ fn release_post_build(output: &ParseOutput) -> Result<()> {
 
     if branch_exists(RELEASE_BRANCH) {
         // release branch already exists, diff with the last commit
-        let last_release = get_commit_sha(RELEASE_BRANCH)?;
-        set_parents(&last_release, &build_commit)?;
         run_command("git", &["checkout", RELEASE_BRANCH])?;
-        run_command("git", &["merge", TEMP_BRANCH])?;
-        // there's probably a more efficient way to do this, but this seems to get GitUp to display
-        // a diff of the first parent instead of the second
-        run_command("git", &["reset", "HEAD~1"])?;
-        commit_all(&commit_message)?;
-        set_parents(&last_release, &build_commit)?;
+        run_command("git", &["merge", "-s", "ours", "main", "-m", "Dummy merge"])?;
+        run_command("git", &["checkout", TEMP_BRANCH])?;
+        let release_head = format!("refs/heads/{}", RELEASE_BRANCH);
+        run_command("git", &["symbolic-ref", "HEAD", &release_head])?;
+        run_command("git", &["commit", "-a", "--amend", "-C", TEMP_BRANCH])?;
     } else {
         // release branch doesn't yet exist, creating it is all we need to do
         run_command("git", &["checkout", "-b", RELEASE_BRANCH])?;
