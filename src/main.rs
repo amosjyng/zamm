@@ -156,6 +156,8 @@ fn release_post_build(output: &ParseOutput) -> Result<()> {
         // release branch doesn't yet exist, creating it is all we need to do
         run_command("git", &["checkout", "-b", RELEASE_BRANCH])?;
     }
+    let version_tag = format!("v{}", project.version);
+    run_command("git", &["tag", &version_tag])?;
     // Temp branch cleanup
     run_command("git", &["branch", "-D", TEMP_BRANCH])?;
 
