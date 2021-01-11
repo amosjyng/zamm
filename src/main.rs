@@ -28,12 +28,16 @@ const RELEASE_BRANCH: &str = "releases";
 /// Short-lived temp branch for commit munging.
 const TEMP_BRANCH: &str = "zamm-temp-release";
 
-#[derive(Default)]
+/// Filename for project Cargo file.
+const CARGO_FILE: &str = "Cargo.toml";
+
 struct ProjectInfo {
     /// The name of the project currently being built.
     pub name: String,
     /// The version of the project currently being built.
     pub version: String,
+    /// The rest of the TOML contents.
+    pub toml: Value,
 }
 
 /// Prepare for release build.
@@ -67,25 +71,20 @@ fn update_cargo_lock(package_name: &str, new_version: &str) -> Result<()> {
     Ok(())
 }
 
-/// Get version of the project in the current directory. Also removes any non-release tags from the
-/// version (e.g. any "-beta" or "-alpha" suffixes).
-fn local_project_version() -> Result<ProjectInfo> {
-    let cargo_toml = "Cargo.toml";
-    let build_contents = read_to_string(cargo_toml)?;
-    let mut build_cfg = build_contents.parse::<Value>().unwrap();
-    let mut build_info = ProjectInfo {
+fn load_project_info() -> Result<ProjectInfo> {
+    let build_contents = read_to_string(CARGO_FILE)?;
+    let build_cfg = build_contents.parse::<Value>().unwrap();
+    Ok(ProjectInfo {
         name: build_cfg["package"]["name"].as_str().unwrap().to_owned(),
         version: build_cfg["package"]["version"].as_str().unwrap().to_owned(),
-    };
-    if !build_info.version.contains('-') {
-        return Ok(build_info);
-    }
-    // otherwise, get rid of non-prod tag (e.g. "0.0.1-beta" becomes "0.0.1")
-    build_info.version = build_info.version.split('-').next().unwrap().to_owned();
-    build_cfg["package"]["version"] = toml::Value::String(build_info.version.clone());
-    update_cargo_lock(&build_info.name, &build_info.version)?;
-    fs::write(cargo_toml, build_cfg.to_string())?;
-    Ok(build_info)
+        toml: build_cfg,
+    })
+}
+
+fn update_project_version(new_info: &mut ProjectInfo) -> Result<()> {
+    new_info.toml["package"]["version"] = toml::Value::String(new_info.version.clone());
+    update_cargo_lock(&new_info.name, &new_info.version)?;
+    fs::write(CARGO_FILE, new_info.toml.to_string())
 }
 
 fn branch_exists(branch: &str) -> bool {
@@ -110,9 +109,21 @@ fn set_parents(parent1: &str, parent2: &str) -> Result<String> {
     )
 }
 
+fn next_version_string(current_version: &str) -> String {
+    let mut next_version = semver::Version::parse(current_version).unwrap();
+    next_version.increment_patch();
+    next_version.to_string()
+}
+
 /// Destructively prepare repo for release after build.
 fn release_post_build(output: &ParseOutput) -> Result<()> {
-    let project = local_project_version()?;
+    let mut project = load_project_info()?;
+    if project.version.contains('-') {
+        // get rid of non-prod tag (e.g. "0.0.1-beta" becomes "0.0.1")
+        project.version = project.version.split('-').next().unwrap().to_owned();
+        update_project_version(&mut project)?;
+    }
+
     // the commit the code was build from
     let build_commit = get_commit_sha("HEAD")?;
 
@@ -145,11 +156,12 @@ fn release_post_build(output: &ParseOutput) -> Result<()> {
         // release branch doesn't yet exist, creating it is all we need to do
         run_command("git", &["checkout", "-b", RELEASE_BRANCH])?;
     }
-
+    let version_tag = format!("v{}", project.version);
+    run_command("git", &["tag", &version_tag])?;
     // Temp branch cleanup
     run_command("git", &["branch", "-D", TEMP_BRANCH])?;
 
-    // GCS commands:
+    // Upload build file to GCS
     match env::var("SERVICE_ACCOUNT") {
         Ok(_) => {
             // remove zamm_ prefix for official ZAMM projects
@@ -173,6 +185,16 @@ fn release_post_build(output: &ParseOutput) -> Result<()> {
         Err(_) =>
             warn!("Not uploading build file to zamm.dev because the SERVICE_ACCOUNT environment variable is not set for GCS access."),
     };
+
+    // Bump version. Do after GCS bucket so that project version remains the same as the old one.
+    // Go back to original commit first
+    run_command("git", &["checkout", &build_commit])?;
+    let next_version = next_version_string(&project.version);
+    project.version = format!("{}-beta", next_version);
+    update_project_version(&mut project)?;
+    let next_version_branch = format!("bump-version-{}", next_version);
+    run_command("git", &["checkout", "-b", &next_version_branch])?;
+    commit_all(&format!("Bump version to {}", next_version))?;
 
     Ok(())
 }
@@ -347,4 +369,15 @@ fn main() {
             1
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_next_version() {
+        assert_eq!(next_version_string("0.1.0"), "0.1.1");
+        assert_eq!(next_version_string("0.1.9"), "0.1.10");
+    }
 }
